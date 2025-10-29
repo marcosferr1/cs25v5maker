@@ -31,8 +31,6 @@ services:
       - cs25v5-network
 
   frontend:
-    build: ./frontend
-    # Pass API base to Vite at build time
     build:
       context: ./frontend
       args:
