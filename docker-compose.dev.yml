@@ -28,6 +28,9 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/cs2
       PORT: 4000
       NODE_ENV: development
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_USERNAME: cs2
+      ADMIN_PASSWORD: 1234
     ports:
       - "4000:4000"
     volumes:

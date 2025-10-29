@@ -1,6 +1,9 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
@@ -8,11 +11,63 @@ const Fuse = require('fuse.js');
 const db = require('./db');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(bodyParser.json());
 
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
+
+// Auth helpers
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-prod';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+// You can set ADMIN_PASSWORD_HASH to a bcrypt hash; if not provided, use plain env ADMIN_PASSWORD
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || null;
+
+function signToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
+}
+
+function requireAuth(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'missing token' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: 'invalid token' });
+  }
+}
+
+// Auth routes
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' });
+
+    if (username !== ADMIN_USERNAME) return res.status(401).json({ error: 'invalid credentials' });
+
+    let ok = false;
+    if (ADMIN_PASSWORD_HASH) {
+      ok = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+    } else {
+      ok = password === ADMIN_PASSWORD;
+    }
+    if (!ok) return res.status(401).json({ error: 'invalid credentials' });
+
+    const token = signToken({ sub: 'admin', role: 'admin', username: ADMIN_USERNAME });
+    return res.json({ token });
+  } catch (err) {
+    console.error('Login error:', err);
+    return res.status(500).json({ error: 'login failed' });
+  }
+});
 
 // Routes
 app.get('/api/players', async (req, res) => {
@@ -20,7 +75,7 @@ app.get('/api/players', async (req, res) => {
   res.json(result.rows);
 });
 
-app.post('/api/players', async (req, res) => {
+app.post('/api/players', requireAuth, async (req, res) => {
   const { name, kd, total_damage } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
   
@@ -37,7 +92,7 @@ app.post('/api/players', async (req, res) => {
 });
 
 // Update player
-app.put('/api/players/:id', async (req, res) => {
+app.put('/api/players/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { name, kd, total_damage } = req.body;
   
@@ -61,7 +116,7 @@ app.put('/api/players/:id', async (req, res) => {
 });
 
 // Delete player
-app.delete('/api/players/:id', async (req, res) => {
+app.delete('/api/players/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   
   try {
@@ -157,7 +212,7 @@ app.get('/api/matches/:id', async (req, res) => {
 });
 
 // Submit detailed match results
-app.post('/api/matches', async (req, res) => {
+app.post('/api/matches', requireAuth, async (req, res) => {
   const { teams } = req.body; // { team1: [{id, team, kills, deaths, assists, headshot_percentage, damage, result}], team2: [...] }
   
   if (!teams || !teams.team1 || !teams.team2) {
@@ -248,7 +303,7 @@ app.post('/api/matches', async (req, res) => {
 });
 
 // Upload CSV and process match data
-app.post('/api/matches/upload-csv', upload.single('csvFile'), async (req, res) => {
+app.post('/api/matches/upload-csv', requireAuth, upload.single('csvFile'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No CSV file uploaded' });
   }
@@ -430,7 +485,7 @@ app.post('/api/matches/upload-csv', upload.single('csvFile'), async (req, res) =
 });
 
 // Create match from processed CSV data
-app.post('/api/matches/from-csv', async (req, res) => {
+app.post('/api/matches/from-csv', requireAuth, async (req, res) => {
   const { processedData, unmatchedPlayers, newPlayers, matchMapId } = req.body;
   
   console.log('Creating match from CSV data:');
@@ -592,7 +647,7 @@ app.post('/api/matches/from-csv', async (req, res) => {
 });
 
 // Draw random teams from provided player IDs
-app.post('/api/draw/random', async (req, res) => {
+app.post('/api/draw/random', requireAuth, async (req, res) => {
   const { playerIds } = req.body;
   if (!Array.isArray(playerIds) || playerIds.length < 10) return res.status(400).json({ error: 'playerIds array of at least 10 required' });
 
@@ -607,7 +662,7 @@ app.post('/api/draw/random', async (req, res) => {
 
 
 // Draw balanced teams by metric: 'kd' or 'damage'
-app.post('/api/draw/balance', async (req, res) => {
+app.post('/api/draw/balance', requireAuth, async (req, res) => {
   const { playerIds, metric } = req.body;
   if (!Array.isArray(playerIds) || playerIds.length < 10) return res.status(400).json({ error: 'playerIds array of at least 10 required' });
   if (!['kd','damage'].includes(metric)) return res.status(400).json({ error: "metric must be 'kd' or 'damage'" });
@@ -813,7 +868,7 @@ app.post('/api/draw/balance', async (req, res) => {
 });
 
 // Delete a match and update player stats
-app.delete('/api/matches/:id', async (req, res) => {
+app.delete('/api/matches/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   
   try {
@@ -882,7 +937,7 @@ app.delete('/api/matches/:id', async (req, res) => {
 });
 
 // Update a match and recalculate player stats
-app.put('/api/matches/:id', async (req, res) => {
+app.put('/api/matches/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { teams } = req.body;
   

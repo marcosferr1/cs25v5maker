@@ -44,6 +44,9 @@ const CsvUploadModal = ({ isOpen, onClose, onMatchCreated }) => {
 
       const response = await fetch(`${API}/api/matches/upload-csv`, {
         method: 'POST',
+        headers: {
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+        },
         body: formData
       });
 
@@ -78,7 +81,8 @@ const CsvUploadModal = ({ isOpen, onClose, onMatchCreated }) => {
       const response = await fetch(`${API}/api/matches/from-csv`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
         },
         body: JSON.stringify({
           processedData,

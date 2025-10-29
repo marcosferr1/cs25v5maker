@@ -17,10 +17,13 @@ services:
     depends_on:
       - db
     environment:
-      DATABASE_URL: db://postgresUser:postgresPass@db:5432/cs2
+      DATABASE_URL: postgres://postgresUser:postgresPass@db:5432/cs2
       PORT: 4000
       NODE_ENV: development
       HOST_BACKEND_PORT: ${HOST_BACKEND_PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     ports:
       - "${HOST_BACKEND_PORT}:4000"
     volumes:

@@ -44,6 +44,7 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
         },
         body: JSON.stringify({
           name: editForm.name.trim(),
@@ -84,6 +85,9 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
     try {
       const response = await fetch(`${API}/api/players/${playerId}`, {
         method: 'DELETE',
+        headers: {
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+        }
       });
 
       if (!response.ok) {

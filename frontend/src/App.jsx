@@ -5,6 +5,7 @@ import TeamDrawer from "./components/TeamDrawer";
 import TeamDisplay from "./components/TeamDisplay";
 import MatchesSection from "./components/MatchesSection";
 import PlayersSection from "./components/PlayersSection";
+import Login from "./components/Login";
 import ThemeToggle from "./components/ThemeToggle";
 import { ToastContainer } from "./components/Toast";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -21,6 +22,8 @@ function App() {
   const [teams, setTeams] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeSection, setActiveSection] = useState('teams'); // 'teams', 'matches', or 'players'
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
+  const [showLogin, setShowLogin] = useState(false);
   const { toasts, removeToast, showError, showSuccess, showInfo } = useToast();
   const { theme, toggleTheme } = useTheme();
   const { modalState, showConfirmation, hideConfirmation, handleConfirm } = useConfirmationModal();
@@ -116,7 +119,10 @@ function App() {
 
       const response = await fetch(`${API}/api/draw/${type}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+        },
         body: JSON.stringify(body),
       });
 
@@ -182,12 +188,61 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="container">
-        <div className="app-header">
+        <div className="app-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
           <h1>CS2 5v5 Maker</h1>
-          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            {!isAuthenticated ? (
+              <button
+                className="tab-buttons"
+                onClick={() => setShowLogin(true)}
+                title="Login administrador"
+                  style={{ padding: '8px 14px' ,
+                    backgroundColor: 'blue',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                Admin
+              </button>
+            ) : (
+              <button
+                className="tab-buttons"
+                onClick={() => { localStorage.removeItem('token'); setIsAuthenticated(false); }}
+                title="Cerrar sesión"
+                style={{ 
+                  padding: '8px 14px',
+                  backgroundColor: 'red',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                 }}
+              >
+                Salir
+              </button>
+            )}
+          </div>
         </div>
         
         <ToastContainer toasts={toasts} removeToast={removeToast} />
+        {showLogin && !isAuthenticated && (
+          <div className="modal-overlay" onClick={() => setShowLogin(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+              <Login onLoggedIn={() => { setIsAuthenticated(true); setShowLogin(false); }} onClose={() => setShowLogin(false)} />
+            </div>
+          </div>
+        )}
 
         <div className="main-navigation">
           <div className="nav-tabs">

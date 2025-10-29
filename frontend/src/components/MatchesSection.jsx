@@ -23,7 +23,10 @@ const MatchesSection = ({ players, lastTeams }) => {
       
       const response = await fetch(`${API}/api/matches`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+        },
         body: JSON.stringify({ teams }),
       });
 
@@ -68,7 +71,10 @@ const MatchesSection = ({ players, lastTeams }) => {
       
       const response = await fetch(`${API}/api/matches/${editingMatchId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+        },
         body: JSON.stringify({ teams }),
       });
 
@@ -94,6 +100,9 @@ const MatchesSection = ({ players, lastTeams }) => {
       
       const response = await fetch(`${API}/api/matches/${matchId}`, {
         method: 'DELETE',
+        headers: {
+          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
+        }
       });
 
       if (!response.ok) {
