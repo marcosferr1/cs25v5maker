@@ -32,15 +32,16 @@ services:
 
   frontend:
     build: ./frontend
+    # Pass API base to Vite at build time
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: ${VITE_API_BASE}
     depends_on:
       - backend
-    environment:
-      VITE_API_BASE: ${VITE_API_BASE}
-      HOST_FRONTEND_PORT: ${HOST_FRONTEND_PORT}
     ports:
       - "${HOST_FRONTEND_PORT}:3000"
-    # SIN volumes aquí
-    command: npm run dev -- --host 0.0.0.0
+    # Static serving of built assets
     networks:
       - cs25v5-network
 
