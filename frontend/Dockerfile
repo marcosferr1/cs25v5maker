@@ -8,9 +8,11 @@ RUN npm ci || npm install
 # Copy source
 COPY . .
 
-# Build with Vite using API base provided at build-time
+# Build with Vite using API base and base path provided at build-time
 ARG VITE_API_BASE
+ARG VITE_BASE_PATH
 ENV VITE_API_BASE=${VITE_API_BASE}
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
 # Serve static build
