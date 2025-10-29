@@ -8,10 +8,8 @@ services:
       POSTGRES_DB: cs2
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - cs25v5-network
-
   backend:
     build: ./backend
     depends_on:
@@ -26,14 +24,9 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     ports:
       - "${HOST_BACKEND_PORT}:4000"
-    volumes:
-      - ./backend/src:/app/src
-      - ./backend/package.json:/app/package.json
-      - /app/node_modules
     command: npm run dev
     networks:
       - cs25v5-network
-
   frontend:
     build: ./frontend
     depends_on:
@@ -43,17 +36,9 @@ services:
       HOST_FRONTEND_PORT: ${HOST_FRONTEND_PORT}
     ports:
       - "${HOST_FRONTEND_PORT}:3000"
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
-      - ./frontend/package.json:/app/package.json
-      - ./frontend/vite.config.js:/app/vite.config.js
-      - ./frontend/index.html:/app/index.html
-      - /app/node_modules
     command: npm run dev -- --host 0.0.0.0
     networks:
       - cs25v5-network
-
 volumes:
   db-data:
 networks:
