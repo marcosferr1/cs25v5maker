@@ -3,6 +3,11 @@ const { Pool } = require('pg');
 const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/cs2';
 const pool = new Pool({ connectionString });
 
+// Prevent the app from crashing on idle client errors
+pool.on('error', (err) => {
+  console.error('Unexpected PG pool error:', err.message);
+});
+
 // Connectivity check and concise log (without leaking credentials)
 (async () => {
   try {

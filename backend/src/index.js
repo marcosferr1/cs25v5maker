@@ -71,8 +71,13 @@ app.post('/api/auth/login', async (req, res) => {
 
 // Routes
 app.get('/api/players', async (req, res) => {
-  const result = await db.query('SELECT * FROM players ORDER BY id');
-  res.json(result.rows);
+  try {
+    const result = await db.query('SELECT * FROM players ORDER BY id');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching players:', err);
+    res.status(503).json({ error: 'database unavailable' });
+  }
 });
 
 app.post('/api/players', requireAuth, async (req, res) => {
@@ -651,13 +656,18 @@ app.post('/api/draw/random', requireAuth, async (req, res) => {
   const { playerIds } = req.body;
   if (!Array.isArray(playerIds) || playerIds.length < 10) return res.status(400).json({ error: 'playerIds array of at least 10 required' });
 
-  const shuffled = playerIds.slice().sort(() => Math.random() - 0.5).slice(0,10);
-  const teamA = shuffled.slice(0,5);
-  const teamB = shuffled.slice(5,10);
+  try {
+    const shuffled = playerIds.slice().sort(() => Math.random() - 0.5).slice(0,10);
+    const teamA = shuffled.slice(0,5);
+    const teamB = shuffled.slice(5,10);
 
-  const rows = await db.query('SELECT * FROM players WHERE id = ANY($1)', [shuffled]);
-  const map = new Map(rows.rows.map(r => [r.id, r]));
-  res.json({ teamA: teamA.map(id => map.get(id)), teamB: teamB.map(id => map.get(id)) });
+    const rows = await db.query('SELECT * FROM players WHERE id = ANY($1)', [shuffled]);
+    const map = new Map(rows.rows.map(r => [r.id, r]));
+    res.json({ teamA: teamA.map(id => map.get(id)), teamB: teamB.map(id => map.get(id)) });
+  } catch (err) {
+    console.error('Error drawing random teams:', err);
+    res.status(503).json({ error: 'database unavailable' });
+  }
 });
 
 
@@ -667,9 +677,10 @@ app.post('/api/draw/balance', requireAuth, async (req, res) => {
   if (!Array.isArray(playerIds) || playerIds.length < 10) return res.status(400).json({ error: 'playerIds array of at least 10 required' });
   if (!['kd','damage'].includes(metric)) return res.status(400).json({ error: "metric must be 'kd' or 'damage'" });
 
-  const ids = playerIds.slice(0,10);
-  const rows = await db.query('SELECT * FROM players WHERE id = ANY($1)', [ids]);
-  const players = rows.rows;
+  try {
+    const ids = playerIds.slice(0,10);
+    const rows = await db.query('SELECT * FROM players WHERE id = ANY($1)', [ids]);
+    const players = rows.rows;
 
   // choose sortKey
   const key = metric === 'kd' ? (p => parseFloat(p.kd)||0) : (p => parseInt(p.total_damage)||0);
@@ -864,7 +875,11 @@ app.post('/api/draw/balance', requireAuth, async (req, res) => {
   }
 
   
-  res.json({ teamA: bestTeams.teamA, teamB: bestTeams.teamB });
+    res.json({ teamA: bestTeams.teamA, teamB: bestTeams.teamB });
+  } catch (err) {
+    console.error('Error drawing balanced teams:', err);
+    res.status(503).json({ error: 'database unavailable' });
+  }
 });
 
 // Delete a match and update player stats
@@ -1291,4 +1306,10 @@ app.get('/api/maps/stats', async (req, res) => {
 });
 
 const port = process.env.PORT || 4000;
+// Global error handler to avoid crashing on unhandled async errors
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'internal server error' });
+});
+
 app.listen(port, () => console.log('Server running on port', port));
