@@ -1,21 +1,9 @@
 FROM node:18-alpine
 WORKDIR /app
-
-# Install deps
 COPY package*.json ./
-RUN npm ci || npm install
-
-# Copy source
+# Install all dependencies including dev dependencies for development
+RUN npm install
 COPY . .
-
-# Build with Vite using API base and base path provided at build-time
-ARG VITE_API_BASE
-ARG VITE_BASE_PATH
-ENV VITE_API_BASE=${VITE_API_BASE}
-ENV VITE_BASE_PATH=${VITE_BASE_PATH}
-RUN npm run build
-
-# Serve static build
-RUN npm i -g serve
 EXPOSE 3000
-CMD ["serve", "-s", "dist", "-l", "3000"]
+# Default command for development (can be overridden in docker-compose)
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
