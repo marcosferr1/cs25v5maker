@@ -1,38 +1,29 @@
 version: "3.8"
+
 services:
-  db:
-    image: postgres:14
-    environment:
-      POSTGRES_USER: postgresUser
-      POSTGRES_PASSWORD: postgresPass
-      POSTGRES_DB: cs2
-    volumes:
-      - db-data:/var/lib/postgresql/data
-      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - cs25v5-network
   backend:
     build: ./backend
-    depends_on:
-      - db
     environment:
-      DATABASE_URL: postgres://postgresUser:postgresPass@db:5432/cs2
+      # Neon connection string (edit if needed)
+      DATABASE_URL: ${DATABASE_URL}
       PORT: 4000
-      NODE_ENV: development
+      NODE_ENV: production
       HOST_BACKEND_PORT: ${HOST_BACKEND_PORT}
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     ports:
       - "${HOST_BACKEND_PORT}:4000"
-    command: npm run dev
+    command: npm start
     networks:
       - cs25v5-network
+
   frontend:
     build: ./frontend
     depends_on:
       - backend
     environment:
+      VITE_BASE: ${VITE_BASE}
       VITE_API_BASE: ${VITE_API_BASE}
       HOST_FRONTEND_PORT: ${HOST_FRONTEND_PORT}
     ports:
@@ -40,8 +31,7 @@ services:
     command: npm run dev -- --host 0.0.0.0
     networks:
       - cs25v5-network
-volumes:
-  db-data:
+
 networks:
   cs25v5-network:
     driver: bridge
