@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 const API = import.meta.env.VITE_API_BASE 
-
+const VITE_BASE = import.meta.env.VITE_BASE
 const MapStatsPanel = () => {
   const [maps, setMaps] = useState([]);
   const [selectedMap, setSelectedMap] = useState(null);
@@ -54,7 +54,7 @@ const MapStatsPanel = () => {
   };
 
   const getMapImage = (mapSlug) => {
-    return `/assets/mapPool/${mapSlug}.webp`;
+    return `${VITE_BASE}/assets/mapPool/${mapSlug}.webp`;
   };
 
   if (isLoading) {
