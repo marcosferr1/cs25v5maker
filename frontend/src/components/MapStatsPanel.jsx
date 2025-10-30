@@ -54,7 +54,7 @@ const MapStatsPanel = () => {
   };
 
   const getMapImage = (mapSlug) => {
-    return `${VITE_BASE}/assets/mapPool/${mapSlug}.webp`;
+    return `${VITE_BASE}assets/mapPool/${mapSlug}.webp`;
   };
 
   if (isLoading) {
