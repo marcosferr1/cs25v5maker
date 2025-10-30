@@ -1,7 +1,22 @@
 const { Pool } = require('pg');
 
 const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/cs2';
-const pool = new Pool({ connectionString });
+
+// Enable SSL automatically for hosted providers like Neon or when sslmode is requested
+let poolConfig = { connectionString };
+try {
+  const url = new URL(connectionString);
+  const host = url.hostname || '';
+  const hasSslMode = /[?&]sslmode=require/i.test(connectionString);
+  if (host.endsWith('neon.tech') || hasSslMode) {
+    // Neon requires TLS; rejectUnauthorized:false avoids root CA issues locally
+    poolConfig.ssl = { rejectUnauthorized: false };
+  }
+} catch (_) {
+  // If parsing fails, leave default config
+}
+
+const pool = new Pool(poolConfig);
 
 // Prevent the app from crashing on idle client errors
 pool.on('error', (err) => {
