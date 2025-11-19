@@ -160,43 +160,133 @@ const MapDetailsModal = ({ mapDetails, isLoading, onClose, getMapImage }) => {
                 <span style={{ padding: "10px",color: 'white' , backgroundColor: "black", position: "absolute", bottom: 0, left: 0 }}>{mapDetails.map.map_name}</span>
               </div>
               <div className="map-highlights">
-                {mapDetails.best_player && (
+                {mapDetails.best_player ? (
                   <div className="highlight-card best">
-                    <div className="highlight-label">Mejor Jugador</div>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Mejor Jugador</div>
                     <div className="highlight-name">{mapDetails.best_player.name}</div>
                     <div className="highlight-stat">
                       {mapDetails.best_player.winrate}% Winrate ({mapDetails.best_player.wins}W / {mapDetails.best_player.total_games}G)
+                      {mapDetails.best_player.avg_kd && ` • ${parseFloat(mapDetails.best_player.avg_kd || 0).toFixed(2)} K/D`}
                     </div>
+                  </div>
+                ) : (
+                  <div className="highlight-card best" style={{ opacity: 0.5 }}>
+                    <div className="highlight-label">Mejor Jugador</div>
+                    <div className="highlight-name">-</div>
+                    <div className="highlight-stat">Sin datos</div>
                   </div>
                 )}
 
-                {mapDetails.highest_kd && (
+                {mapDetails.highest_kd ? (
                   <div className="highlight-card kd">
-                    <div className="highlight-label">Mayor K/D</div>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Mayor K/D</div>
                     <div className="highlight-name">{mapDetails.highest_kd.name}</div>
                     <div className="highlight-stat">
                       {parseFloat(mapDetails.highest_kd.avg_kd || 0).toFixed(2)} K/D ({mapDetails.highest_kd.total_kills}K / {mapDetails.highest_kd.total_deaths}D)
                     </div>
                   </div>
+                ) : (
+                  <div className="highlight-card kd" style={{ opacity: 0.5 }}>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Mayor K/D</div>
+                    <div className="highlight-name">-</div>
+                    <div className="highlight-stat">Sin datos</div>
+                  </div>
                 )}
 
-                {mapDetails.most_damage && (
+                {mapDetails.most_kills ? (
+                  <div className="highlight-card kills">
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Más Kills</div>
+                    <div className="highlight-name">{mapDetails.most_kills.name}</div>
+                    <div className="highlight-stat">
+                      {mapDetails.most_kills.total_kills} kills totales ({parseFloat(mapDetails.most_kills.avg_kills || 0).toFixed(1)} avg)
+                    </div>
+                  </div>
+                ) : (
+                  <div className="highlight-card kills" style={{ opacity: 0.5 }}>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Más Kills</div>
+                    <div className="highlight-name">-</div>
+                    <div className="highlight-stat">Sin datos</div>
+                  </div>
+                )}
+
+                {mapDetails.most_deaths ? (
+                  <div className="highlight-card deaths">
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Más Muertes</div>
+                    <div className="highlight-name">{mapDetails.most_deaths.name}</div>
+                    <div className="highlight-stat">
+                      {mapDetails.most_deaths.total_deaths} muertes totales ({parseFloat(mapDetails.most_deaths.avg_deaths || 0).toFixed(1)} avg)
+                    </div>
+                  </div>
+                ) : (
+                  <div className="highlight-card deaths" style={{ opacity: 0.5 }}>
+                    <div style={{
+                      textTransform: 'uppercase',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Más Muertes</div>
+                    <div className="highlight-name">-</div>
+                    <div className="highlight-stat">Sin datos</div>
+                  </div>
+                )}
+
+                {mapDetails.most_damage ? (
                   <div className="highlight-card damage">
-                    <div className="highlight-label">Mayor Daño Promedio</div>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Mayor Daño Promedio</div>
                     <div className="highlight-name">{mapDetails.most_damage.name}</div>
                     <div className="highlight-stat">
                       {parseInt(mapDetails.most_damage.avg_damage || 0)} daño promedio
                     </div>
                   </div>
+                ) : (
+                  <div className="highlight-card damage" style={{ opacity: 0.5 }}>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Mayor Daño Promedio</div>
+                    <div className="highlight-name">-</div>
+                    <div className="highlight-stat">Sin datos</div>
+                  </div>
                 )}
 
-                {mapDetails.worst_player && (
+                {mapDetails.worst_player ? (
                   <div className="highlight-card worst">
-                    <div className="highlight-label">Peor Jugador</div>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Peor Jugador</div>
                     <div className="highlight-name">{mapDetails.worst_player.name}</div>
                     <div className="highlight-stat">
                       {mapDetails.worst_player.winrate}% Winrate ({mapDetails.worst_player.wins}W / {mapDetails.worst_player.total_games}G)
                     </div>
+                  </div>
+                ) : (
+                  <div className="highlight-card worst" style={{ opacity: 0.5 }}>
+                    <div style={{
+                      textDecoration: 'underline',
+                      fontSize: '0.95rem',
+                    }} className="highlight-label">Peor Jugador</div>
+                    <div className="highlight-name">-</div>
+                    <div className="highlight-stat">Sin datos</div>
                   </div>
                 )}
               </div>

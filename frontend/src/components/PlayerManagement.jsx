@@ -13,8 +13,8 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('cards'); // 'cards' or 'table'
-  const [sortField, setSortField] = useState(null);
-  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
+  const [sortField, setSortField] = useState('kd'); // Ordenar por K/D por defecto
+  const [sortDirection, setSortDirection] = useState('desc'); // Ordenar descendente (mayor a menor)
   const { showError, showSuccess } = useToast();
   const { modalState, showConfirmation, hideConfirmation, handleConfirm } = useConfirmationModal();
 
@@ -123,11 +123,27 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
     let aValue = a[sortField];
     let bValue = b[sortField];
 
-    // Handle null/undefined values
-    if (aValue == null) aValue = 0;
-    if (bValue == null) bValue = 0;
+    // Handle winrate calculation
+    if (sortField === 'winrate') {
+      const aGames = Number(a.games) || 0;
+      const bGames = Number(b.games) || 0;
+      aValue = aGames > 0 ? (Number(a.wins) || 0) / aGames : 0;
+      bValue = bGames > 0 ? (Number(b.wins) || 0) / bGames : 0;
+    }
 
-    // Compare values
+    // Handle null/undefined values - convert to 0 for numeric fields
+    if (aValue == null || aValue === '') aValue = 0;
+    if (bValue == null || bValue === '') bValue = 0;
+
+    // Convert to number for numeric comparison (for kd and other numeric fields)
+    if (sortField === 'kd' || sortField === 'winrate' || typeof aValue === 'number' || !isNaN(Number(aValue))) {
+      aValue = Number(aValue) || 0;
+      bValue = Number(bValue) || 0;
+      const comparison = aValue - bValue;
+      return sortDirection === 'asc' ? comparison : -comparison;
+    }
+
+    // Compare string values
     if (typeof aValue === 'string') {
       const comparison = aValue.localeCompare(bValue);
       return sortDirection === 'asc' ? comparison : -comparison;
@@ -234,6 +250,12 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
                       {getSortIcon('draws')}
                     </div>
                   </th>
+                  <th onClick={() => handleSort('winrate')} className="sortable">
+                    <div  className="th-content">
+                      Winrate <br />
+                      {getSortIcon('winrate')}
+                    </div>
+                  </th>
                   <th onClick={() => handleSort('total_kills')} className="sortable">
                     <div className="th-content">
                       Kills Total
@@ -276,7 +298,11 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
                       {getSortIcon('ave_damage')}
                     </div>
                   </th>
-                  <th className="actions-column">Acciones</th>
+                  <th className="actions-column">
+                    <div className="th-content">
+                      Acciones <br />
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -296,6 +322,14 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
                     <td>{player.wins || '0'}</td>
                     <td>{player.loses || '0'}</td>
                     <td>{player.draws || '0'}</td>
+                    <td>
+                      {(() => {
+                        const games = Number(player.games) || 0;
+                        const wins = Number(player.wins) || 0;
+                        const winrate = games > 0 ? (wins / games) * 100 : 0;
+                        return `${winrate.toFixed(2)}%`;
+                      })()}
+                    </td>
                     <td>{player.total_kills || '0'}</td>
                     <td>{player.total_deaths || '0'}</td>
                     <td>{isEditing === player.id ? (

@@ -3407,12 +3407,13 @@ h2 {
 }
 
 .highlight-label {
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   color: var(--text-muted);
   font-family: 'Michroma', sans-serif;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 10px;
+
 }
 
 .highlight-name {
@@ -3567,6 +3568,7 @@ h2 {
   letter-spacing: 0.5px;
   border-bottom: 2px solid var(--accent-primary);
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .players-table th.sortable {
@@ -3574,6 +3576,9 @@ h2 {
   user-select: none;
   transition: background-color 0.2s ease;
   position: relative;
+
+  
+
 }
 
 .players-table th.sortable:hover {
@@ -3593,7 +3598,13 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: space-between;
+  margin-left: 10px;
+
+ 
+}
+
+.players-table th.actions-column .th-content {
+  justify-content: flex-start;
 }
 
 .players-table tbody tr {

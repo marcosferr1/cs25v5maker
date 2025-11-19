@@ -307,7 +307,170 @@ app.post('/api/matches', requireAuth, async (req, res) => {
   }
 });
 
-// Upload CSV and process match data
+// Helper function to process CSV data (shared between file and text upload)
+async function processCsvData(csvData) {
+
+  // Validate CSV structure
+  if (csvData.length === 0) {
+    throw new Error('CSV is empty');
+  }
+
+  // Check required columns
+  const requiredColumns = ['Team', 'Player', 'Kills', 'Deaths', 'Assists', 'HS%', 'DMG'];
+  const csvColumns = Object.keys(csvData[0]);
+  const missingColumns = requiredColumns.filter(col => !csvColumns.includes(col));
+  
+  // Check if Map column exists (optional)
+  const hasMapColumn = csvColumns.includes('Map');
+    
+  if (missingColumns.length > 0) {
+    throw new Error(`Missing required columns: ${missingColumns.join(', ')}`);
+  }
+
+  // Get all existing players for matching
+  const existingPlayers = await db.query('SELECT * FROM players ORDER BY name');
+  
+  // Configure Fuse.js for fuzzy matching
+  const fuse = new Fuse(existingPlayers.rows, {
+    keys: ['name'],
+    threshold: 0.2, // Lower threshold = more strict matching (was 0.3)
+    includeScore: true
+  });
+
+  // Extract map from first row and normalize it
+  let matchMapId = 1; // Default to Dust 2
+  console.log('Map detection debug:');
+  console.log('hasMapColumn:', hasMapColumn);
+  console.log('csvData.length:', csvData.length);
+  console.log('First row Map value:', csvData.length > 0 ? csvData[0].Map : 'No data');
+  
+  if (hasMapColumn && csvData.length > 0 && csvData[0].Map) {
+    const mapName = csvData[0].Map.trim().toLowerCase();
+    console.log('Original map name:', csvData[0].Map);
+    console.log('Normalized map name:', mapName);
+    
+    // Map CSV map names to our database names
+    const mapMapping = {
+      'dust 2': 'dust2',
+      'dust2': 'dust2',
+      'nuke': 'nuke',
+      'inferno': 'inferno',
+      'mirage': 'mirage',
+      'ancient': 'ancient',
+      'overpass': 'overpass',
+      'train': 'train',
+      'anubis': 'anubis',
+      'vertigo': 'vertigo'
+    };
+    
+    const normalizedMapName = mapMapping[mapName] || 'dust2';
+    console.log('Mapped map name:', normalizedMapName);
+    
+    // Get map ID from database
+    const mapResult = await db.query('SELECT id FROM maps WHERE name = $1', [normalizedMapName]);
+    console.log('Map query result:', mapResult.rows);
+    if (mapResult.rows.length > 0) {
+      matchMapId = mapResult.rows[0].id;
+      console.log('Selected map ID:', matchMapId);
+    } else {
+      console.log('Map not found, using default ID 1');
+    }
+  } else {
+    console.log('Using default map ID 1');
+  }
+
+  // Check if all players have both Win Point and Lose Point (draw scenario)
+  const allHaveBothPoints = csvData.every(row => {
+    const hasWinPoint = row['Win Point'] && row['Win Point'].trim() !== '';
+    const hasLosePoint = row['Lose Point'] && row['Lose Point'].trim() !== '';
+    return hasWinPoint && hasLosePoint;
+  });
+  
+  // Process CSV data
+  const processedData = [];
+  const unmatchedPlayers = [];
+  
+  for (const row of csvData) {
+    // Skip empty rows or rows with missing required data
+    if (!row.Player || !row.Team || row.Player.trim() === '' || row.Team.trim() === '') {
+      console.log('Skipping empty row:', row);
+      continue;
+    }
+    
+    const playerName = row.Player.trim();
+    const teamName = row.Team.trim();
+    
+    // Try exact match first
+    let matchedPlayer = existingPlayers.rows.find(p => 
+      p.name.toLowerCase() === playerName.toLowerCase()
+    );
+    
+    // If no exact match, try fuzzy matching
+    if (!matchedPlayer) {
+      const fuzzyResults = fuse.search(playerName);
+      if (fuzzyResults.length > 0 && fuzzyResults[0].score < 0.2) {
+        matchedPlayer = fuzzyResults[0].item;
+      }
+    }
+    
+    // Determine result based on Win Point and Lose Point
+    let result = 'loss';
+    if (allHaveBothPoints) {
+      // If all players have both points, it's a draw
+      result = 'draw';
+    } else if (row['Win Point'] && row['Win Point'].trim() !== '') {
+      result = 'win';
+    } else if (row['Lose Point'] && row['Lose Point'].trim() !== '') {
+      result = 'loss';
+    }
+    
+    const playerData = {
+      csvName: playerName,
+      matchedPlayer: matchedPlayer,
+      team: teamName,
+      kills: parseInt(row.Kills) || 0,
+      deaths: parseInt(row.Deaths) || 0,
+      assists: parseInt(row.Assists) || 0,
+      headshot_percentage: parseFloat(row['HS%']) || 0,
+      damage: parseInt(row.DMG) || 0,
+      result: result
+    };
+    
+    if (matchedPlayer) {
+      processedData.push({
+        ...playerData,
+        player_id: matchedPlayer.id,
+        player_name: matchedPlayer.name
+      });
+    } else {
+      unmatchedPlayers.push(playerData);
+    }
+  }
+
+  // Validate we have exactly 10 players
+  const totalPlayers = processedData.length + unmatchedPlayers.length;
+  if (totalPlayers !== 10) {
+    throw new Error(`Formato de CSV incorrecto: Se esperaban 10 jugadores pero se encontraron ${totalPlayers}. Verifica que el CSV tenga exactamente 10 filas de datos (sin contar el encabezado) y que no haya filas vacías.`);
+  }
+
+  // Validate teams
+  const team1Players = [...processedData, ...unmatchedPlayers].filter(p => p.team === 'Team 1');
+  const team2Players = [...processedData, ...unmatchedPlayers].filter(p => p.team === 'Team 2');
+  
+  if (team1Players.length !== 5 || team2Players.length !== 5) {
+    throw new Error(`Formato de CSV incorrecto: Distribución de equipos inválida. Team 1 tiene ${team1Players.length} jugadores, Team 2 tiene ${team2Players.length} jugadores. Cada equipo debe tener exactamente 5 jugadores.`);
+  }
+
+  return {
+    success: true,
+    processedData: processedData,
+    unmatchedPlayers: unmatchedPlayers,
+    matchMapId: matchMapId,
+    message: `Found ${processedData.length} matched players, ${unmatchedPlayers.length} unmatched players`
+  };
+}
+
+// Upload CSV and process match data (from file)
 app.post('/api/matches/upload-csv', requireAuth, upload.single('csvFile'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No CSV file uploaded' });
@@ -328,164 +491,70 @@ app.post('/api/matches/upload-csv', requireAuth, upload.single('csvFile'), async
     // Clean up uploaded file
     fs.unlinkSync(req.file.path);
 
-    // Validate CSV structure
-    if (csvData.length === 0) {
-      return res.status(400).json({ error: 'CSV file is empty' });
-    }
-
-    // Check required columns
-    const requiredColumns = ['Team', 'Player', 'Kills', 'Deaths', 'Assists', 'HS%', 'DMG'];
-    const csvColumns = Object.keys(csvData[0]);
-    const missingColumns = requiredColumns.filter(col => !csvColumns.includes(col));
-    
-    // Check if Map column exists (optional)
-    const hasMapColumn = csvColumns.includes('Map');
-    
-    if (missingColumns.length > 0) {
-      return res.status(400).json({ 
-        error: `Missing required columns: ${missingColumns.join(', ')}` 
-      });
-    }
-
-    // Get all existing players for matching
-    const existingPlayers = await db.query('SELECT * FROM players ORDER BY name');
-    
-    // Configure Fuse.js for fuzzy matching
-    const fuse = new Fuse(existingPlayers.rows, {
-      keys: ['name'],
-      threshold: 0.2, // Lower threshold = more strict matching (was 0.3)
-      includeScore: true
-    });
-
-    // Extract map from first row and normalize it
-    let matchMapId = 1; // Default to Dust 2
-    console.log('Map detection debug:');
-    console.log('hasMapColumn:', hasMapColumn);
-    console.log('csvData.length:', csvData.length);
-    console.log('First row Map value:', csvData.length > 0 ? csvData[0].Map : 'No data');
-    
-    if (hasMapColumn && csvData.length > 0 && csvData[0].Map) {
-      const mapName = csvData[0].Map.trim().toLowerCase();
-      console.log('Original map name:', csvData[0].Map);
-      console.log('Normalized map name:', mapName);
-      
-      // Map CSV map names to our database names
-      const mapMapping = {
-        'dust 2': 'dust2',
-        'dust2': 'dust2',
-        'nuke': 'nuke',
-        'inferno': 'inferno',
-        'mirage': 'mirage',
-        'ancient': 'ancient',
-        'overpass': 'overpass',
-        'train': 'train',
-        'anubis': 'anubis',
-        'vertigo': 'vertigo'
-      };
-      
-      const normalizedMapName = mapMapping[mapName] || 'dust2';
-      console.log('Mapped map name:', normalizedMapName);
-      
-      // Get map ID from database
-      const mapResult = await db.query('SELECT id FROM maps WHERE name = $1', [normalizedMapName]);
-      console.log('Map query result:', mapResult.rows);
-      if (mapResult.rows.length > 0) {
-        matchMapId = mapResult.rows[0].id;
-        console.log('Selected map ID:', matchMapId);
-      } else {
-        console.log('Map not found, using default ID 1');
-      }
-    } else {
-      console.log('Using default map ID 1');
-    }
-
-    // Process CSV data
-    const processedData = [];
-    const unmatchedPlayers = [];
-    
-    for (const row of csvData) {
-      // Skip empty rows or rows with missing required data
-      if (!row.Player || !row.Team || row.Player.trim() === '' || row.Team.trim() === '') {
-        console.log('Skipping empty row:', row);
-        continue;
-      }
-      
-      const playerName = row.Player.trim();
-      const teamName = row.Team.trim();
-      
-      // Try exact match first
-      let matchedPlayer = existingPlayers.rows.find(p => 
-        p.name.toLowerCase() === playerName.toLowerCase()
-      );
-      
-      // If no exact match, try fuzzy matching
-      if (!matchedPlayer) {
-        const fuzzyResults = fuse.search(playerName);
-        if (fuzzyResults.length > 0 && fuzzyResults[0].score < 0.2) {
-          matchedPlayer = fuzzyResults[0].item;
-        }
-      }
-      
-      // Determine result based on Win Point and Lose Point
-      let result = 'loss';
-      if (row['Win Point'] && row['Win Point'].trim() !== '') {
-        result = 'win';
-      } else if (row['Lose Point'] && row['Lose Point'].trim() !== '') {
-        result = 'loss';
-      }
-      
-      const playerData = {
-        csvName: playerName,
-        matchedPlayer: matchedPlayer,
-        team: teamName,
-        kills: parseInt(row.Kills) || 0,
-        deaths: parseInt(row.Deaths) || 0,
-        assists: parseInt(row.Assists) || 0,
-        headshot_percentage: parseFloat(row['HS%']) || 0,
-        damage: parseInt(row.DMG) || 0,
-        result: result
-      };
-      
-      if (matchedPlayer) {
-        processedData.push({
-          ...playerData,
-          player_id: matchedPlayer.id,
-          player_name: matchedPlayer.name
-        });
-      } else {
-        unmatchedPlayers.push(playerData);
-      }
-    }
-
-    // Validate we have exactly 10 players
-    const totalPlayers = processedData.length + unmatchedPlayers.length;
-    if (totalPlayers !== 10) {
-      return res.status(400).json({ 
-        error: `Formato de CSV incorrecto: Se esperaban 10 jugadores pero se encontraron ${totalPlayers}. Verifica que el CSV tenga exactamente 10 filas de datos (sin contar el encabezado) y que no haya filas vacías.` 
-      });
-    }
-
-    // Validate teams
-    const team1Players = [...processedData, ...unmatchedPlayers].filter(p => p.team === 'Team 1');
-    const team2Players = [...processedData, ...unmatchedPlayers].filter(p => p.team === 'Team 2');
-    
-    if (team1Players.length !== 5 || team2Players.length !== 5) {
-      return res.status(400).json({ 
-        error: `Formato de CSV incorrecto: Distribución de equipos inválida. Team 1 tiene ${team1Players.length} jugadores, Team 2 tiene ${team2Players.length} jugadores. Cada equipo debe tener exactamente 5 jugadores.` 
-      });
-    }
-
-    res.json({
-      success: true,
-      processedData: processedData,
-      unmatchedPlayers: unmatchedPlayers,
-      matchMapId: matchMapId,
-      message: `Found ${processedData.length} matched players, ${unmatchedPlayers.length} unmatched players`
-    });
+    // Process CSV data using shared function
+    const result = await processCsvData(csvData);
+    res.json(result);
 
   } catch (err) {
     console.error('Error processing CSV:', err);
     res.status(500).json({ error: `Failed to process CSV file: ${err.message}` });
+  }
+});
+
+// Upload CSV and process match data (from text)
+app.post('/api/matches/upload-csv-text', requireAuth, async (req, res) => {
+  const { csvText } = req.body;
+  
+  if (!csvText || !csvText.trim()) {
+    return res.status(400).json({ error: 'No CSV text provided' });
+  }
+
+  try {
+    const csvData = [];
+    
+    // Parse CSV text (handles both comma and tab separators)
+    await new Promise((resolve, reject) => {
+      const lines = csvText.trim().split('\n').filter(line => line.trim()); // Remove empty lines
+      if (lines.length === 0) {
+        return reject(new Error('CSV text is empty'));
+      }
+      
+      // Detect separator (comma or tab)
+      const firstLine = lines[0];
+      const hasTabs = firstLine.includes('\t');
+      const separator = hasTabs ? '\t' : ',';
+      
+      // Get headers from first line
+      const headers = firstLine.split(separator).map(h => h.trim());
+      
+      // Parse each data line
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue; // Skip empty lines
+        
+        // Split by detected separator
+        const values = line.split(separator).map(v => v.trim());
+        
+        // Only process if we have at least some data
+        if (values.length === 0 || (values.length === 1 && !values[0])) continue;
+        
+        const row = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index] || '';
+        });
+        csvData.push(row);
+      }
+      
+      resolve();
+    });
+
+    // Process CSV data using shared function
+    const result = await processCsvData(csvData);
+    res.json(result);
+
+  } catch (err) {
+    console.error('Error processing CSV text:', err);
+    res.status(500).json({ error: `Failed to process CSV text: ${err.message}` });
   }
 });
 
@@ -1105,25 +1174,32 @@ app.get('/api/maps/:mapId/stats', async (req, res) => {
       WHERE map_id = $1
     `, [mapId]);
     
-    // Get best player by winrate (min 5 games)
+    // Get best player by winrate (desempate por KD si hay empate)
     const bestPlayer = await db.query(`
-      SELECT 
-        p.id,
-        p.name,
-        COUNT(CASE WHEN mp.result = 'win' THEN 1 END) as wins,
-        COUNT(mp.id) as total_games,
-        ROUND((COUNT(CASE WHEN mp.result = 'win' THEN 1 END)::numeric / COUNT(mp.id)) * 100, 1) as winrate
-      FROM match_players mp
-      JOIN matches m ON mp.match_id = m.id
-      JOIN players p ON mp.player_id = p.id
-      WHERE m.map_id = $1
-      GROUP BY p.id, p.name
-      HAVING COUNT(mp.id) >= 5
-      ORDER BY winrate DESC, wins DESC
+      WITH player_stats AS (
+        SELECT 
+          p.id,
+          p.name,
+          COUNT(CASE WHEN mp.result = 'win' THEN 1 END) as wins,
+          COUNT(mp.id) as total_games,
+          ROUND((COUNT(CASE WHEN mp.result = 'win' THEN 1 END)::numeric / COUNT(mp.id)) * 100, 1) as winrate,
+          CASE 
+            WHEN SUM(mp.deaths) > 0 THEN ROUND(SUM(mp.kills)::numeric / SUM(mp.deaths), 2)
+            ELSE SUM(mp.kills)::numeric
+          END as avg_kd
+        FROM match_players mp
+        JOIN matches m ON mp.match_id = m.id
+        JOIN players p ON mp.player_id = p.id
+        WHERE m.map_id = $1
+        GROUP BY p.id, p.name
+        HAVING COUNT(mp.id) > 0
+      )
+      SELECT * FROM player_stats
+      ORDER BY winrate DESC, avg_kd DESC
       LIMIT 1
     `, [mapId]);
     
-    // Get player with highest K/D on this map (min 3 games)
+    // Get player with highest K/D on this map
     const highestKD = await db.query(`
       SELECT 
         p.id,
@@ -1137,12 +1213,12 @@ app.get('/api/maps/:mapId/stats', async (req, res) => {
       JOIN players p ON mp.player_id = p.id
       WHERE m.map_id = $1
       GROUP BY p.id, p.name
-      HAVING COUNT(mp.id) >= 3 AND SUM(mp.deaths) > 0
+      HAVING COUNT(mp.id) > 0 AND SUM(mp.deaths) > 0
       ORDER BY avg_kd DESC
       LIMIT 1
     `, [mapId]);
     
-    // Get worst player by winrate (min 5 games)
+    // Get worst player by winrate
     const worstPlayer = await db.query(`
       SELECT 
         p.id,
@@ -1155,8 +1231,8 @@ app.get('/api/maps/:mapId/stats', async (req, res) => {
       JOIN players p ON mp.player_id = p.id
       WHERE m.map_id = $1
       GROUP BY p.id, p.name
-      HAVING COUNT(mp.id) >= 5
-      ORDER BY winrate ASC, wins ASC
+      HAVING COUNT(mp.id) > 0
+      ORDER BY winrate ASC NULLS LAST, wins ASC, COUNT(mp.id) ASC
       LIMIT 1
     `, [mapId]);
     
@@ -1173,9 +1249,53 @@ app.get('/api/maps/:mapId/stats', async (req, res) => {
       JOIN players p ON mp.player_id = p.id
       WHERE m.map_id = $1
       GROUP BY p.id, p.name
+      HAVING COUNT(mp.id) > 0
       ORDER BY avg_damage DESC
       LIMIT 1
     `, [mapId]);
+    
+    // Get player with most kills on this map
+    const mostKills = await db.query(`
+      SELECT 
+        p.id,
+        p.name,
+        SUM(mp.kills) as total_kills,
+        ROUND(AVG(mp.kills), 1) as avg_kills,
+        COUNT(mp.id) as total_games
+      FROM match_players mp
+      JOIN matches m ON mp.match_id = m.id
+      JOIN players p ON mp.player_id = p.id
+      WHERE m.map_id = $1
+      GROUP BY p.id, p.name
+      HAVING COUNT(mp.id) > 0
+      ORDER BY total_kills DESC
+      LIMIT 1
+    `, [mapId]);
+    
+    // Get player with most deaths on this map
+    const mostDeaths = await db.query(`
+      SELECT 
+        p.id,
+        p.name,
+        SUM(mp.deaths) as total_deaths,
+        ROUND(AVG(mp.deaths), 1) as avg_deaths,
+        COUNT(mp.id) as total_games
+      FROM match_players mp
+      JOIN matches m ON mp.match_id = m.id
+      JOIN players p ON mp.player_id = p.id
+      WHERE m.map_id = $1
+      GROUP BY p.id, p.name
+      HAVING COUNT(mp.id) > 0
+      ORDER BY total_deaths DESC
+      LIMIT 1
+    `, [mapId]);
+    
+    // Debug logs (temporary)
+    console.log('Map stats debug for mapId:', mapId);
+    console.log('bestPlayer rows:', bestPlayer.rows.length, bestPlayer.rows[0]);
+    console.log('mostKills rows:', mostKills.rows.length, mostKills.rows[0]);
+    console.log('mostDeaths rows:', mostDeaths.rows.length, mostDeaths.rows[0]);
+    console.log('worstPlayer rows:', worstPlayer.rows.length, worstPlayer.rows[0]);
     
     // Get all players stats for this map
     const allPlayersStats = await db.query(`
@@ -1210,6 +1330,8 @@ app.get('/api/maps/:mapId/stats', async (req, res) => {
       highest_kd: highestKD.rows[0] || null,
       worst_player: worstPlayer.rows[0] || null,
       most_damage: mostDamage.rows[0] || null,
+      most_kills: mostKills.rows[0] || null,
+      most_deaths: mostDeaths.rows[0] || null,
       all_players: allPlayersStats.rows.map(row => ({
         player_id: row.id,
         player_name: row.name,
