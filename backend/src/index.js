@@ -73,7 +73,73 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/players', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM players ORDER BY id');
-    res.json(result.rows);
+    
+    // Get match history for each player
+    const playersWithHistory = await Promise.all(
+      result.rows.map(async (player) => {
+        // Get last 5 matches for this player, ordered by most recent
+        const historyResult = await db.query(`
+          SELECT mp.result, m.created_at
+          FROM match_players mp
+          JOIN matches m ON mp.match_id = m.id
+          WHERE mp.player_id = $1
+          ORDER BY m.created_at DESC
+          LIMIT 5
+        `, [player.id]);
+        
+        // Calculate streak (consecutive wins or losses from most recent)
+        let winStreak = 0;
+        let lossStreak = 0;
+        let currentStreak = 0;
+        let streakType = null; // 'win' or 'loss'
+        
+        if (historyResult.rows.length > 0) {
+          // Start from most recent match
+          for (const match of historyResult.rows) {
+            if (match.result === 'win') {
+              if (streakType === null || streakType === 'win') {
+                streakType = 'win';
+                currentStreak++;
+              } else {
+                break; // Streak broken
+              }
+            } else if (match.result === 'loss') {
+              if (streakType === null || streakType === 'loss') {
+                streakType = 'loss';
+                currentStreak++;
+              } else {
+                break; // Streak broken
+              }
+            } else {
+              // Draw breaks any streak
+              break;
+            }
+          }
+          
+          if (streakType === 'win' && currentStreak >= 3) {
+            winStreak = currentStreak;
+          } else if (streakType === 'loss' && currentStreak >= 3) {
+            lossStreak = currentStreak;
+          }
+        }
+        
+        // Format history as string (L, W, D)
+        const history = historyResult.rows.map(row => {
+          if (row.result === 'win') return 'W';
+          if (row.result === 'loss') return 'L';
+          return 'D';
+        }).join('');
+        
+        return {
+          ...player,
+          matchHistory: history,
+          winStreak: winStreak >= 3 ? winStreak : 0,
+          lossStreak: lossStreak >= 3 ? lossStreak : 0
+        };
+      })
+    );
+    
+    res.json(playersWithHistory);
   } catch (err) {
     console.error('Error fetching players:', err);
     res.status(503).json({ error: 'database unavailable' });
@@ -117,6 +183,51 @@ app.put('/api/players/:id', requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'failed to update player' });
+  }
+});
+
+// Get player history (all matches)
+app.get('/api/players/:id/history', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Get player info
+    const playerResult = await db.query('SELECT * FROM players WHERE id = $1', [id]);
+    
+    if (playerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'player not found' });
+    }
+    
+    const player = playerResult.rows[0];
+    
+    // Get all matches for this player with details
+    const matchesResult = await db.query(`
+      SELECT 
+        m.id as match_id,
+        m.created_at,
+        m.map_id,
+        map.display_name as map_name,
+        mp.team,
+        mp.kills,
+        mp.deaths,
+        mp.assists,
+        mp.headshot_percentage,
+        mp.damage,
+        mp.result
+      FROM match_players mp
+      JOIN matches m ON mp.match_id = m.id
+      LEFT JOIN maps map ON m.map_id = map.id
+      WHERE mp.player_id = $1
+      ORDER BY m.created_at DESC
+    `, [id]);
+    
+    res.json({
+      player: player,
+      matches: matchesResult.rows
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'failed to fetch player history' });
   }
 });
 

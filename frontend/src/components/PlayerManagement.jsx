@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { useConfirmationModal } from '../hooks/useConfirmationModal';
 import { IconButton, Tooltip } from '@mui/material';
-import { Edit, Delete, Save, Cancel, ArrowUpward, ArrowDownward, UnfoldMore } from '@mui/icons-material';
+import { Edit, Delete, Save, Cancel, ArrowUpward, ArrowDownward, UnfoldMore, History } from '@mui/icons-material';
 import ConfirmationModal from './ConfirmationModal';
+import PlayerHistory from './PlayerHistory';
 
 const API = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
@@ -15,6 +16,7 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
   const [viewMode, setViewMode] = useState('cards'); // 'cards' or 'table'
   const [sortField, setSortField] = useState('kd'); // Ordenar por K/D por defecto
   const [sortDirection, setSortDirection] = useState('desc'); // Ordenar descendente (mayor a menor)
+  const [selectedPlayerHistory, setSelectedPlayerHistory] = useState(null);
   const { showError, showSuccess } = useToast();
   const { modalState, showConfirmation, hideConfirmation, handleConfirm } = useConfirmationModal();
 
@@ -172,8 +174,8 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
   };
 
   return (
-    <div className="player-management">
-      <div className="management-header">
+    <div   className="player-management">
+      <div  className="management-header">
         <h2>Gestión de Jugadores</h2>
         <p>Administra los jugadores del sistema. Puedes editar sus datos o eliminarlos.</p>
         
@@ -188,7 +190,9 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
             />
           </div>
           
-          <div className="view-toggle">
+          <div  style={{
+          marginBottom: '20px',
+        }}  className="view-toggle">
             <button
               className={viewMode === 'cards' ? 'active' : ''}
               onClick={() => setViewMode('cards')}
@@ -388,6 +392,19 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
                         </>
                       ) : (
                         <>
+                          <Tooltip title="Ver historial">
+                            <IconButton 
+                              onClick={() => setSelectedPlayerHistory({ id: player.id, name: player.name })}
+                              disabled={isLoading}
+                              size="small"
+                              sx={{ 
+                                color: 'var(--accent-primary)',
+                                '&:hover': { backgroundColor: 'var(--accent-primary)', color: 'white' }
+                              }}
+                            >
+                              <History fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="Editar jugador">
                             <IconButton 
                               onClick={() => handleEdit(player)}
@@ -501,6 +518,20 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
                   <div className="player-header">
                     <h3>{player.name}</h3>
                     <div className="player-actions">
+                      <Tooltip title="Ver historial">
+                        <IconButton 
+                          onClick={() => setSelectedPlayerHistory({ id: player.id, name: player.name })}
+                          disabled={isLoading}
+                          size="small"
+                          sx={{ 
+                            color: 'var(--accent-primary)',
+                            fontFamily: 'Michroma',
+                            '&:hover': { backgroundColor: 'var(--accent-primary)', color: 'white' }
+                          }}
+                        >
+                          <History fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Editar jugador">
                         <IconButton 
                           onClick={() => handleEdit(player)}
@@ -569,6 +600,18 @@ const PlayerManagement = ({ players, onPlayersUpdate }) => {
         cancelText={modalState.cancelText}
         type={modalState.type}
       />
+      
+      {selectedPlayerHistory && (
+        <div className="modal-overlay" onClick={() => setSelectedPlayerHistory(null)}>
+          <div onClick={(e) => e.stopPropagation()}>
+            <PlayerHistory
+              playerId={selectedPlayerHistory.id}
+              playerName={selectedPlayerHistory.name}
+              onClose={() => setSelectedPlayerHistory(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
